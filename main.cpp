@@ -1,4 +1,3 @@
-
 #include <llanylib/utils_base/ArrayBase.hpp>
 #include <llanylib/utils_base/hash/LlanyHash.hpp>
 
@@ -17,9 +16,7 @@
 
 #include <sys/stat.h>
 
-#undef TRUE
-
-using String = ::llcpp::meta::utils::wStr<::llcpp::TRUE>;
+using String = ::llcpp::meta::utils::wStr<::llcpp::LL_TRUE>;
 
 struct StringBuffer {
     String path;
