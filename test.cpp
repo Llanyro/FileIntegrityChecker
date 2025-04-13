@@ -1,9 +1,12 @@
 #include "llcppheaders/llanylib/utils_base/ArrayBase.hpp"
+#include "llcppheaders/llanylib/utils_base/hash/LlanyHash.hpp"
 
 #include "printers.hpp"
 #include "mydirent.hpp"
 #include "utils.hpp"
 #include "filefunc.hpp"
+
+#include <chrono>
 
 using String =  ::llcpp::meta::utils::ArrayBase<::llcpp::char_type>;
 
@@ -92,10 +95,9 @@ __LL_NODISCARD__ ::llcpp::ll_bool_t iterateOverDirectory(StringBuffer& directory
 		if(entry->d_type != DT_UNKNOWN) {
 			if (!concatOrContinue(directory, entry->d_name, size))
 				continue;
-			else if (iter(directory, convert<char>(entry->d_type))) {
-				resetPreviousFileName(directory, size);
+			else if (iter(directory, convert<char>(entry->d_type)))
 				return true;
-			}
+			else resetPreviousFileName(directory, size);
 		}
 		else
 
@@ -114,14 +116,15 @@ __LL_NODISCARD__ ::llcpp::ll_bool_t iterateOverDirectory(StringBuffer& directory
 				print(__LL_L "'\n");
 				continue;
 			}
-			else if (iter(directory, type)) {
-				resetPreviousFileName(directory, size);
+			else if (iter(directory, type))
 				return true;
-			}
+			else resetPreviousFileName(directory, size);
 		}
 	}
-	return true;
+	return false;
 }
+
+constexpr ::llcpp::meta::utils::hash::LlanyHash HASHER;
 
 int main(int argc, const char** argv) {
 	// Check parameters and directory to check
@@ -143,13 +146,45 @@ int main(int argc, const char** argv) {
 	// Iterater over all folders
 	::llcpp::u8 depth{};
 
+	auto start = ::std::chrono::high_resolution_clock::now();
+
 	FolderIterator itself = nullptr;
 	auto f = [&depth, &itself](StringBuffer& full_filename, const FileType type) -> ::llcpp::ll_bool_t {
-		print(__LL_L "Object found: ");
-		print(full_filename.path.begin(), full_filename.last);
-		print(__LL_L "\n");
+		if (type == FileType::RegularRead) {
+			FILE* f = ll_fopen(full_filename.path.data(), __LL_L "rb");
+			::std::fseek(f, 0, SEEK_END);
+			auto size = ::std::ftell(f);
+			::std::fseek(f, 0, SEEK_SET);
+			::llcpp::u8* data = new (::std::nothrow) ::llcpp::u8[size];
 
-		if(type == FileType::Directory && depth < 3) {
+			if(data) {
+				::std::fread(data, 1, size, f);
+				auto hash = HASHER.llanyHash64_v3(data, size);
+				print(__LL_L "Object found: ");
+				print(full_filename.path.data(), full_filename.last);
+				print(__LL_L "\t::");
+				print(static_cast<::llcpp::u8>(type));
+				print(__LL_L "\t::");
+				print(hash);
+				print(__LL_L "\n");
+				delete[] data;
+			}
+			else {
+				::extra::print2(__LL_L "No space avaible to hash: ");
+				::extra::print2(static_cast<::llcpp::i64>(size));
+				::extra::print2(__LL_L "\n");
+			}
+			::std::fclose(f);
+		}
+		else {
+			print(__LL_L "Object found: ");
+			print(full_filename.path.data(), full_filename.last);
+			print(__LL_L "\t::");
+			print(static_cast<::llcpp::u8>(type));
+			print(__LL_L "\n");
+		}
+
+		if(type == FileType::Directory && depth < 99) {
 			++depth;
 			return iterateOverDirectory(full_filename, itself);
 		}
@@ -158,6 +193,12 @@ int main(int argc, const char** argv) {
 	};
 	itself = f;
 	(void)iterateOverDirectory(buffer_holder, f);
+
+	auto res = static_cast<::llcpp::u64>(::std::chrono::duration_cast<::std::chrono::seconds>(::std::chrono::high_resolution_clock::now() - start).count());
+
+	::extra::print2(__LL_L "Time: ");
+	::extra::print2(static_cast<::llcpp::u64>(::std::chrono::duration_cast<::std::chrono::milliseconds>(::std::chrono::high_resolution_clock::now() - start).count()));
+	::extra::print2(__LL_L "\n");
 
 	return 0;
 }

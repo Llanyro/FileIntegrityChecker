@@ -28,12 +28,13 @@ using stat_type_t = StatType<::llcpp::string>;
 static_assert(!::std::is_same_v<stat_type_t, ::llcpp::Emptyclass>,
     "Error generating stat type");
 
-enum class FileType {
+enum class FileType : ::llcpp::u8 {
 #if defined(__LL_WINDOWS_SYSTEM) || defined(__LL_MINGW)
     Directory,
     CHR,
     Pipe,
     Regular,
+    RegularRead,
 #elif defined(__LL_POSIX_SYSTEM) || defined(__LL_UNIX_SYSTEM)
     FIFO, CHR, Directory, BLK, REG, LNK, SOCK, WHT,
 #endif // OS
@@ -69,13 +70,16 @@ using mode_t = unsigned short;
 template<>
 __LL_NODISCARD__ __LL_INLINE__ FileType convert(const mode_t st_mode) noexcept {
 #if defined(__LL_WINDOWS_SYSTEM) || defined(__LL_MINGW)
-	switch (st_mode) {
-		case _S_IFDIR: 		return FileType::Directory;
-		case _S_IFIFO: 		return FileType::Pipe;
-		case _S_IFREG: 		return FileType::Regular;
-		case _S_IFCHR: 		return FileType::CHR;
-		default: 			return FileType::Unknown;
+	if(st_mode & _S_IFDIR) return FileType::Directory;
+	else if(st_mode & _S_IFIFO) return FileType::Pipe;
+	else if(st_mode & _S_IFREG) {
+		return
+			(st_mode & _S_IREAD)
+			? FileType::RegularRead
+			: FileType::Regular;
 	}
+	else if(st_mode & _S_IFCHR) return FileType::CHR;
+	else return FileType::Unknown;
 #elif defined(__LL_POSIX_SYSTEM) || defined(__LL_UNIX_SYSTEM)
 	if(S_ISDIR(st_mode)) 		return FileType::Directory;
 	else if(S_ISCHR(st_mode)) 	return FileType::CHR;
