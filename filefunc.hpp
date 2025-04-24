@@ -35,6 +35,8 @@ enum class FileType : ::llcpp::u8 {
     Pipe,
     Regular,
     RegularRead,
+    RegularWrite,
+    RegularExec,
 #elif defined(__LL_POSIX_SYSTEM) || defined(__LL_UNIX_SYSTEM)
     FIFO, CHR, Directory, BLK, REG, LNK, SOCK, WHT,
 #endif // OS
@@ -70,13 +72,22 @@ using mode_t = unsigned short;
 template<>
 __LL_NODISCARD__ __LL_INLINE__ FileType convert(const mode_t st_mode) noexcept {
 #if defined(__LL_WINDOWS_SYSTEM) || defined(__LL_MINGW)
+	/*if(S_ISDIR(st_mode)) 		return FileType::Directory;
+	else if(S_ISCHR(st_mode)) 	return FileType::CHR;
+	else if(S_ISBLK(st_mode)) 	return FileType::BLK;
+	else if(S_ISREG(st_mode)) 	return FileType::REG;
+	else if(S_ISFIFO(st_mode))	return FileType::FIFO;
+	//else if(S_ISLNK(st_mode))	return FileType::LNK;
+	//else if(S_ISSOCK(st_mode))	return FileType::SOCK;
+	else 						return FileType::Unknown;*/
+
 	if(st_mode & _S_IFDIR) return FileType::Directory;
 	else if(st_mode & _S_IFIFO) return FileType::Pipe;
 	else if(st_mode & _S_IFREG) {
-		return
-			(st_mode & _S_IREAD)
-			? FileType::RegularRead
-			: FileType::Regular;
+		if (st_mode & _S_IREAD) return FileType::RegularRead;
+		else if (st_mode & _S_IWRITE) return FileType::RegularWrite;
+		else if (st_mode & _S_IEXEC) return FileType::RegularExec;
+		return FileType::Regular;
 	}
 	else if(st_mode & _S_IFCHR) return FileType::CHR;
 	else return FileType::Unknown;
@@ -92,12 +103,13 @@ __LL_NODISCARD__ __LL_INLINE__ FileType convert(const mode_t st_mode) noexcept {
 #endif // OS
 }
 
-__LL_NODISCARD__ __LL_INLINE__ FileType indentifyFile(const ::llcpp::string filename) noexcept {
+__LL_NODISCARD__ __LL_INLINE__ FileType indentifyFile(const ::llcpp::string filename, ::llcpp::u64& size) noexcept {
     stat_type_t st;
-    return
-        (ll_stat(st, filename) != 0)
-        ? FileType::Error
-        : convert<mode_t>(st.st_mode);
+	if(ll_stat(st, filename) != 0) return FileType::Error;
+	else {
+		size = st.st_size;
+		return convert<mode_t>(st.st_mode);
+	}
 }
 
 

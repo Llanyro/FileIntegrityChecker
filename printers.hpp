@@ -12,8 +12,8 @@ FILE* in	= stdin;
 #define PRINT_NUMBER(str, v)						\
 	do {											\
 		if constexpr (::llcpp::USE_WIDE_CHAR)		\
-			(void)::std::fwprintf(out, L"" str, v);	\
-		else (void)::std::fprintf(out, "%llu", v);	\
+			(void)::std::fwprintf(out, L"" str, v);		\
+		else (void)::std::fprintf(out, str, v);		\
 	} while(0)
 
 template<::llcpp::usize N>
@@ -57,7 +57,7 @@ __LL_INLINE__ void print2(const ::llcpp::u32 v) noexcept {
 }
 
 __LL_INLINE__ void print2(const ::llcpp::i64 v) noexcept {
-	PRINT_NUMBER("%ll", v);
+	PRINT_NUMBER("%lld", v);
 }
 __LL_INLINE__ void print2(const ::llcpp::i32 v) noexcept {
 	PRINT_NUMBER("%i", v);

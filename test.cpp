@@ -1,5 +1,6 @@
 #include "llcppheaders/llanylib/utils_base/ArrayBase.hpp"
 #include "llcppheaders/llanylib/utils_base/hash/LlanyHash.hpp"
+#include "llcppheaders/magic_enum/include/magic_enum/magic_enum.hpp"
 
 #include "printers.hpp"
 #include "mydirent.hpp"
@@ -17,7 +18,7 @@ struct StringBuffer {
 
 using DirType = ::std::remove_pointer_t<decltype(ll_opendir(::std::declval<String::iterator>()))>;
 using EntryType = ::std::remove_pointer_t<decltype(ll_readdir(::std::declval<DirType*>()))>;
-using FolderIterator = std::function<::llcpp::ll_bool_t(StringBuffer& full_filename, const FileType type)>;
+using FolderIterator = std::function<::llcpp::ll_bool_t(StringBuffer& full_filename, const FileType type, ::llcpp::u64 size)>;
 
 // Helper to close directory on function normal exit/early exit
 class DirHandler {
@@ -32,6 +33,8 @@ class DirHandler {
 		DirHandler(DirHandler&&) noexcept = delete;
 		DirHandler& operator=(DirHandler&&) noexcept = delete;
 };
+
+constexpr ::llcpp::char_type filename[] = __LL_L ".\\.patata.exe";
 
 __LL_NODISCARD__ __LL_INLINE__ ::llcpp::ll_bool_t concatOrContinueCheck(StringBuffer& directory, ::llcpp::string filename, const size_t size) noexcept {
 	// Concat file name into buffer
@@ -59,7 +62,7 @@ __LL_NODISCARD__ __LL_INLINE__  ::llcpp::ll_bool_t concatOrContinue(StringBuffer
 		return ::llcpp::LL_FALSE;
 
 	// Copy filename into buffer
-	*(directory.last++) = (__LL_L "\\")[0];		// [TOCHECK] Optimize this?
+	*(directory.last++) = (__LL_L "/")[0];		// [TOCHECK] Optimize this?
 	::std::memcpy(directory.last, filename, size * sizeof(String::value_type));
 	directory.last += size;
 	*(directory.last) = (__LL_L "")[0];			// [TOCHECK] Optimize this?
@@ -83,7 +86,11 @@ __LL_NODISCARD__ ::llcpp::ll_bool_t iterateOverDirectory(StringBuffer& directory
 
 	for(EntryType* entry = ll_readdir(dir); entry; entry = ll_readdir(dir)) {
 		// Insert black list here!
-		if(ll_strcmp(__LL_L ".", entry->d_name) == 0 || ll_strcmp(__LL_L "..", entry->d_name) == 0)
+		if(
+			(entry->d_namlen == 1 && ll_strcmp(__LL_L ".", entry->d_name) == 0)
+			|| (entry->d_namlen == 2 && ll_strcmp(__LL_L "..", entry->d_name) == 0)
+			//|| (entry->d_namlen == 14 && ll_strcmp(filename, entry->d_name) == 0)
+		)
 			continue;
 
 		// Get filename size for further operations
@@ -109,14 +116,16 @@ __LL_NODISCARD__ ::llcpp::ll_bool_t iterateOverDirectory(StringBuffer& directory
 		// If file is concatenated, we check its type
 		else {
 			// Identify file type with stat
-			FileType type = indentifyFile(directory.path.data());
-			if(type == FileType::Error) {
-				print(__LL_L "Could not stat filename '");
-				print(directory.path.data(), directory.last);
-				print(__LL_L "'\n");
+			::llcpp::u64 sss;
+			FileType type = indentifyFile(directory.path.data(), sss);
+			if(type == FileType::Error || type == FileType::Unknown) {
+				::extra::print2(__LL_L "Could not stat filename '");
+				::extra::print2(directory.path.data(), directory.last);
+				::extra::print2(__LL_L "'\n");
+				resetPreviousFileName(directory, size);
 				continue;
 			}
-			else if (iter(directory, type))
+			else if (iter(directory, type, sss))
 				return true;
 			else resetPreviousFileName(directory, size);
 		}
@@ -124,12 +133,14 @@ __LL_NODISCARD__ ::llcpp::ll_bool_t iterateOverDirectory(StringBuffer& directory
 	return false;
 }
 
-constexpr ::llcpp::meta::utils::hash::LlanyHash HASHER;
+constexpr ::llcpp::meta::utils::hash::LlanyHash<::llcpp::u8> HASHER;
 
 int main(int argc, const char** argv) {
+	FILE* out = ll_fopen(filename, __LL_L "w");
+
 	// Check parameters and directory to check
 	//::llcpp::string directory_base = reinterpret_cast<::llcpp::string*>(argv)[1];
-	::llcpp::string directory_base = __LL_L ".\\";
+	::llcpp::string directory_base = __LL_L "./";
 
 	// Set path buffer
 	String::value_type buffer[512]{};
@@ -143,23 +154,22 @@ int main(int argc, const char** argv) {
 	buffer_holder.last += size;
 	*(buffer_holder.last) = (__LL_L "")[0];			// [TOCHECK] Optimize this?
 
-	// Iterater over all folders
-	::llcpp::u8 depth{};
-
+	::llcpp::u64 bytes_read{};
 	auto start = ::std::chrono::high_resolution_clock::now();
 
 	FolderIterator itself = nullptr;
-	auto f = [&depth, &itself](StringBuffer& full_filename, const FileType type) -> ::llcpp::ll_bool_t {
-		if (type == FileType::RegularRead) {
+	auto f = [&itself, &out, &bytes_read](StringBuffer& full_filename, const FileType type, ::llcpp::u64 size) -> ::llcpp::ll_bool_t {
+		if (type == FileType::Regular ||type == FileType::RegularRead) {
 			FILE* f = ll_fopen(full_filename.path.data(), __LL_L "rb");
 			::std::fseek(f, 0, SEEK_END);
-			auto size = ::std::ftell(f);
-			::std::fseek(f, 0, SEEK_SET);
-			::llcpp::u8* data = new (::std::nothrow) ::llcpp::u8[size];
+			size = ::std::ftell(f);
+
+			decltype(HASHER)::byte* data = new (::std::nothrow) decltype(HASHER)::byte[size];
 
 			if(data) {
+				::std::fseek(f, 0, SEEK_SET);
 				::std::fread(data, 1, size, f);
-				auto hash = HASHER.llanyHash64_v3(data, size);
+				auto hash = HASHER.llanyHash64Combine(data, size);
 				print(__LL_L "Object found: ");
 				print(full_filename.path.data(), full_filename.last);
 				print(__LL_L "\t::");
@@ -167,7 +177,10 @@ int main(int argc, const char** argv) {
 				print(__LL_L "\t::");
 				print(hash);
 				print(__LL_L "\n");
+				::std::fwrite(full_filename.path.data(), 1, full_filename.last - full_filename.path.data(), out);
+				::std::fwrite(&hash, sizeof(hash), 1, out);
 				delete[] data;
+				bytes_read += size;
 			}
 			else {
 				::extra::print2(__LL_L "No space avaible to hash: ");
@@ -176,16 +189,15 @@ int main(int argc, const char** argv) {
 			}
 			::std::fclose(f);
 		}
-		else {
-			print(__LL_L "Object found: ");
-			print(full_filename.path.data(), full_filename.last);
-			print(__LL_L "\t::");
-			print(static_cast<::llcpp::u8>(type));
-			print(__LL_L "\n");
+		else if(type != FileType::Directory) {
+			::extra::print2(__LL_L "Object found: ");
+			::extra::print2(full_filename.path.data(), full_filename.last);
+			::extra::print2(__LL_L "\t::");
+			::extra::print2(static_cast<::llcpp::u8>(type));
+			::extra::print2(__LL_L "\n");
 		}
 
-		if(type == FileType::Directory && depth < 99) {
-			++depth;
+		if(type == FileType::Directory) {
 			return iterateOverDirectory(full_filename, itself);
 		}
 		// Tell to dont exit the iterations
@@ -194,11 +206,14 @@ int main(int argc, const char** argv) {
 	itself = f;
 	(void)iterateOverDirectory(buffer_holder, f);
 
-	auto res = static_cast<::llcpp::u64>(::std::chrono::duration_cast<::std::chrono::seconds>(::std::chrono::high_resolution_clock::now() - start).count());
-
 	::extra::print2(__LL_L "Time: ");
 	::extra::print2(static_cast<::llcpp::u64>(::std::chrono::duration_cast<::std::chrono::milliseconds>(::std::chrono::high_resolution_clock::now() - start).count()));
+	::extra::print2(__LL_L "\n Bytes read: ");
+	::extra::print2(bytes_read);
 	::extra::print2(__LL_L "\n");
+
+	fclose(out);
 
 	return 0;
 }
+
