@@ -112,5 +112,10 @@ __LL_NODISCARD__ __LL_INLINE__ FileType indentifyFile(const ::llcpp::string file
 	}
 }
 
+__LL_NODISCARD__ __LL_INLINE__ ::llcpp::ll_bool_t isDirectory(const ::llcpp::string filename) noexcept {
+    stat_type_t st;
+	return (ll_stat(st, filename) != 0) ? ::llcpp::LL_FALSE : (st.st_mode & _S_IFDIR);
+}
+
 
 #endif // FILEFUNC_HPP

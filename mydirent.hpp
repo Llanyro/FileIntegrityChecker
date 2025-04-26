@@ -38,4 +38,21 @@ __LL_NODISCARD__ __LL_INLINE__ struct dirent* ll_readdir(DIR* directory) noexcep
 __LL_NODISCARD__ __LL_INLINE__ int ll_closedir(_WDIR* directory) noexcept { return _wclosedir(directory); }
 __LL_NODISCARD__ __LL_INLINE__ int ll_closedir(DIR* directory) noexcept { return closedir(directory); }
 
+using DirType = ::std::remove_pointer_t<decltype(ll_opendir(::std::declval<::llcpp::string>()))>;
+using EntryType = ::std::remove_pointer_t<decltype(ll_readdir(::std::declval<DirType*>()))>;
+
+// Helper to close directory on function normal exit/early exit
+class DirHandler {
+	private:
+		DirType* dir;
+	public:
+		DirHandler(DirType* dir) noexcept : dir(dir) {}
+		~DirHandler() noexcept { (void)ll_closedir(this->dir); }
+
+		DirHandler(const DirHandler&) noexcept = delete;
+		DirHandler& operator=(const DirHandler&) noexcept = delete;
+		DirHandler(DirHandler&&) noexcept = delete;
+		DirHandler& operator=(DirHandler&&) noexcept = delete;
+};
+
 #endif // MYDIRENT_HPP
